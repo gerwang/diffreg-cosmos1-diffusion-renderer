@@ -133,7 +133,7 @@ class DiffusionRendererPipeline(DiffusionText2WorldGenerationPipeline):
                     data_batch['video'] = data_batch[attributes]
                     break
 
-        data_batch = misc.to(data_batch, device="cuda", dtype=torch.bfloat16)  # move to GPU
+        data_batch = misc.to(data_batch, device="cuda", dtype=torch.bfloat16, exclude_keys=['video', 'rgb'])  # move to GPU
 
         # prepare state_shape
         C = self.model.tokenizer.channel
@@ -147,6 +147,7 @@ class DiffusionRendererPipeline(DiffusionText2WorldGenerationPipeline):
             data_batch,
             guidance=self.guidance,
             state_shape=state_shape,
+            n_sample=data_batch['video'].shape[0],
             num_steps=self.num_steps,
             is_negative_prompt=False,
             seed=self.seed if seed is None else seed,
@@ -173,7 +174,7 @@ class DiffusionRendererPipeline(DiffusionText2WorldGenerationPipeline):
             video = video_normalized * blend_ratio + video * (1 - blend_ratio)
 
         video = (1.0 + video).clamp(0, 2) / 2  # [B, 3, T, H, W]
-        video = (video[0].permute(1, 2, 3, 0) * 255).to(torch.uint8).cpu().numpy()
+        video = (video.permute(0, 2, 3, 4, 1) * 255).to(torch.uint8).cpu().numpy()
 
 
         if self.offload_tokenizer:

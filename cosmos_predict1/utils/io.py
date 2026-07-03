@@ -75,8 +75,9 @@ def save_image_or_video(video_save_path, video, H=704, W=1280, fps=24, video_sav
         if frame.dtype != np.uint8:
             frame = (frame * 255).astype(np.uint8)
         # Change extension to jpg
-        jpg_path = video_save_path.rsplit('.', 1)[0] + '.jpg'
-        imageio.imwrite(jpg_path, frame, format='JPEG', quality=85)
+        # jpg_path = video_save_path.rsplit('.', 1)[0] + '.jpg'
+        # imageio.imwrite(jpg_path, frame, format='JPEG', quality=85)
+        imageio.imwrite(video_save_path, frame)
     else:
         kwargs = {
             "fps": fps,

@@ -68,6 +68,11 @@ def base_plus_ext(path, mode="folder"):
         if not match:
             return None, None
         return match.group(1), match.group(2)
+    if mode == "image":
+        base, ext = os.path.splitext(path)
+        if not ext:
+            return None, None
+        return base, ext.lstrip(".")
     raise NotImplementedError
 
 
@@ -102,6 +107,9 @@ def split_list_with_overlap(lst, chunk_size, overlap_size, chunk_mode="all"):
 
     if len(chunks) > 0 and chunk_mode == "drop_last" and len(chunks[-1]) < chunk_size:
         chunks = chunks[:-1]
+    elif len(chunks) > 0 and chunk_mode == "all_fill_last":
+        while len(chunks[-1]) < chunk_size:
+            chunks[-1].append(lst[-1])
 
     return chunks
 

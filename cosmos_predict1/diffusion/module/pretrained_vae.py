@@ -342,8 +342,8 @@ class BasePretrainedVideoTokenizer(ABC):
     ):
         self._pixel_chunk_duration = pixel_chunk_duration
         self._temporal_compress_factor = temporal_compress_factor
-        self.max_enc_batch_size = max_enc_batch_size
-        self.max_dec_batch_size = max_dec_batch_size
+        self.max_enc_batch_size = 1
+        self.max_dec_batch_size = 1
 
     def register_mean_std(self, vae_dir: str) -> None:
         latent_mean, latent_std = torch.load(os.path.join(vae_dir, "mean_std.pt"), weights_only=True)
@@ -389,12 +389,16 @@ class BasePretrainedVideoTokenizer(ABC):
         B, C, T, H, W = state.shape
         state = self.transform_encode_state_shape(state)
         # use max_enc_batch_size to avoid OOM
+        device = self.latent_mean.device
         if state.shape[0] > self.max_enc_batch_size:
             latent = []
             for i in range(0, state.shape[0], self.max_enc_batch_size):
-                latent.append(super().encode(state[i : i + self.max_enc_batch_size]))
+                partial_state = state[i : i + self.max_enc_batch_size]
+                partial_state = partial_state.to(device=device)
+                latent.append(super().encode(partial_state))
             latent = torch.cat(latent, dim=0)
         else:
+            state = state.to(device=device)
             latent = super().encode(state)
 
         latent = rearrange(latent, "(b n) c t h w -> b c (n t) h w", b=B)
@@ -425,10 +429,10 @@ class BasePretrainedVideoTokenizer(ABC):
         if latent.shape[0] > self.max_dec_batch_size:
             state = []
             for i in range(0, latent.shape[0], self.max_dec_batch_size):
-                state.append(super().decode(latent[i : i + self.max_dec_batch_size]))
+                state.append(super().decode(latent[i : i + self.max_dec_batch_size]).cpu())
             state = torch.cat(state, dim=0)
         else:
-            state = super().decode(latent)
+            state = super().decode(latent).cpu()
         assert state.shape[2] == self.pixel_chunk_duration
         state = rearrange(state, "(b n) c t h w -> b c (n t) h w", b=B)
         if self._temporal_compress_factor == 1:
@@ -526,6 +530,8 @@ class JointImageVideoTokenizer(BaseVAE, VideoTokenizerInterface):
         self.squeeze_for_image = squeeze_for_image
 
     def encode_image(self, state: torch.Tensor) -> torch.Tensor:
+        device = self.image_vae.latent_mean.device
+        state = state.to(device=device)
         if self.squeeze_for_image:
             return self.image_vae.encode(state.squeeze(2)).unsqueeze(2)
         return self.image_vae.encode(state)
@@ -533,7 +539,7 @@ class JointImageVideoTokenizer(BaseVAE, VideoTokenizerInterface):
     def decode_image(self, latent: torch.Tensor) -> torch.Tensor:
         if self.squeeze_for_image:
             return self.image_vae.decode(latent.squeeze(2)).unsqueeze(2)
-        return self.image_vae.decode(latent)
+        return self.image_vae.decode(latent).cpu()
 
     @torch.no_grad()
     def encode(self, state: torch.Tensor) -> torch.Tensor:

@@ -14,7 +14,7 @@
 # limitations under the License.
 
 # conda env create --file cosmos-predict1.yaml
-name: cosmos-predict1
+name: cosmos-predict1.1
 channels:
   - conda-forge
 dependencies:
@@ -22,8 +22,5 @@ dependencies:
   - pip=25.0
   - cmake
   - ninja
-  - gcc=12.4.0
-  - gxx=12.4.0
-  - cuda=12.4
-  - cuda-nvcc=12.4
-  - cuda-toolkit=12.4
+  - cuda-nvcc=12.8
+  - cuda-toolkit=12.8

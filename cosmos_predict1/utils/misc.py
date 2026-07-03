@@ -44,6 +44,7 @@ def to(
     device: str | torch.device | None = None,
     dtype: torch.dtype | None = None,
     memory_format: torch.memory_format = torch.preserve_format,
+    exclude_keys: Optional[List[str]] = None,
 ) -> Any:
     """Recursively cast data into the specified device, dtype, and/or memory_format.
 
@@ -74,7 +75,10 @@ def to(
         )
         return data
     elif isinstance(data, collections.abc.Mapping):
-        return type(data)({key: to(data[key], device=device, dtype=dtype, memory_format=memory_format) for key in data})
+        return type(data)({key: to(data[key], 
+                                   device=device 
+                                   if exclude_keys is None or key not in exclude_keys 
+                                   else data[key].device, dtype=dtype, memory_format=memory_format) for key in data})
     elif isinstance(data, collections.abc.Sequence) and not isinstance(data, (str, bytes)):
         return type(data)([to(elem, device=device, dtype=dtype, memory_format=memory_format) for elem in data])
     else:
@@ -110,9 +114,11 @@ def print_environ_variables(env_vars: list[str]) -> None:
     """
     for env_var in env_vars:
         if env_var in os.environ:
-            log.info(f"Environment variable {Color.green(env_var)}: {Color.yellow(os.environ[env_var])}")
+            log.info(
+                f"Environment variable {Color.green(env_var)}: {Color.yellow(os.environ[env_var])}")
         else:
-            log.warning(f"Environment variable {Color.green(env_var)} not set!")
+            log.warning(
+                f"Environment variable {Color.green(env_var)} not set!")
 
 
 def set_random_seed(seed: int, by_rank: bool = False) -> None:
@@ -148,7 +154,8 @@ def arch_invariant_rand(
     rng = np.random.RandomState(seed)
 
     # # Generate random numbers using the generator
-    random_array = rng.standard_normal(shape).astype(np.float32)  # Use standard_normal for normal distribution
+    random_array = rng.standard_normal(shape).astype(
+        np.float32)  # Use standard_normal for normal distribution
 
     # Convert to torch tensor and return
     return torch.from_numpy(random_array).to(dtype=dtype, device=device)
@@ -184,9 +191,11 @@ class timer(ContextDecorator):  # noqa: N801
     def __exit__(self, exc_type, exc_value, traceback) -> None:  # noqa: ANN001
         time_spent = time.time() - self.tic
         if self.debug:
-            log.debug(f"Time spent on {self.context}: {time_spent:.4f} seconds")
+            log.debug(
+                f"Time spent on {self.context}: {time_spent:.4f} seconds")
         else:
-            log.debug(f"Time spent on {self.context}: {time_spent:.4f} seconds")
+            log.debug(
+                f"Time spent on {self.context}: {time_spent:.4f} seconds")
 
     def __call__(self, func: T) -> T:
         @functools.wraps(func)
@@ -195,9 +204,11 @@ class timer(ContextDecorator):  # noqa: N801
             result = func(*args, **kwargs)
             time_spent = time.time() - tic
             if self.debug:
-                log.debug(f"Time spent on {self.context}: {time_spent:.4f} seconds")
+                log.debug(
+                    f"Time spent on {self.context}: {time_spent:.4f} seconds")
             else:
-                log.debug(f"Time spent on {self.context}: {time_spent:.4f} seconds")
+                log.debug(
+                    f"Time spent on {self.context}: {time_spent:.4f} seconds")
             return result
 
         return wrapper  # type: ignore
@@ -354,7 +365,8 @@ def disabled_train(self: Any, mode: bool = True) -> Any:
 
 
 def count_params(model: nn.Module, verbose=False) -> int:
-    total_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
+    total_params = sum(p.numel()
+                       for p in model.parameters() if p.requires_grad)
     if verbose:
         print(f"{model.__class__.__name__} has {total_params * 1.e-6:.2f} M params.")
     return total_params
@@ -400,9 +412,11 @@ def download_from_s3_with_cache(
     Raises:
         FileNotFoundError: If the data cannot be found in S3 or the cache.
     """
-    cache_dir = os.environ.get("TORCH_HOME") if cache_dir is None else cache_dir
+    cache_dir = os.environ.get(
+        "TORCH_HOME") if cache_dir is None else cache_dir
     cache_dir = (
-        os.environ.get("COSMOS_CACHE_DIR", os.path.expanduser("~/.cache/cosmos")) if cache_dir is None else cache_dir
+        os.environ.get("COSMOS_CACHE_DIR", os.path.expanduser(
+            "~/.cache/cosmos")) if cache_dir is None else cache_dir
     )
     cache_dir = os.path.expanduser(cache_dir)
     if cache_fp is None:
@@ -419,7 +433,8 @@ def download_from_s3_with_cache(
 
     if rank_sync:
         if not os.path.exists(cache_fp):
-            log.critical(f"Local cache {cache_fp} Not exist! Downloading {s3_path} to {cache_fp}.")
+            log.critical(
+                f"Local cache {cache_fp} Not exist! Downloading {s3_path} to {cache_fp}.")
             log.info(f"backend_args: {backend_args}")
             log.info(f"backend_key: {backend_key}")
 
@@ -428,7 +443,8 @@ def download_from_s3_with_cache(
             )
             log.info(f"Downloaded {s3_path} to {cache_fp}.")
         else:
-            log.info(f"Local cache {cache_fp} already exist! {s3_path} -> {cache_fp}.")
+            log.info(
+                f"Local cache {cache_fp} already exist! {s3_path} -> {cache_fp}.")
 
         distributed.barrier()
     else:
@@ -476,7 +492,8 @@ def load_from_s3_with_cache(
     Raises:
         FileNotFoundError: If the data cannot be found in S3 or the cache.
     """
-    cache_fp = download_from_s3_with_cache(s3_path, cache_fp, cache_dir, rank_sync, backend_args, backend_key)
+    cache_fp = download_from_s3_with_cache(
+        s3_path, cache_fp, cache_dir, rank_sync, backend_args, backend_key)
 
     if easy_io_kwargs is None:
         easy_io_kwargs = {}
@@ -506,7 +523,8 @@ def sync_s3_dir_to_local(
     """
     if not s3_dir.startswith("s3://"):
         # If the directory exists locally, return the local path
-        assert os.path.exists(s3_dir), f"{s3_dir} is not a S3 path or a local path."
+        assert os.path.exists(
+            s3_dir), f"{s3_dir} is not a S3 path or a local path."
         return s3_dir
 
     # Load AWS credentials from the file
@@ -526,7 +544,8 @@ def sync_s3_dir_to_local(
 
     # If the local directory is not specified, use the default cache directory
     cache_dir = (
-        os.environ.get("COSMOS_CACHE_DIR", os.path.expanduser("~/.cache/cosmos")) if cache_dir is None else cache_dir
+        os.environ.get("COSMOS_CACHE_DIR", os.path.expanduser(
+            "~/.cache/cosmos")) if cache_dir is None else cache_dir
     )
     cache_dir = os.path.expanduser(cache_dir)
     Path(cache_dir).mkdir(parents=True, exist_ok=True)

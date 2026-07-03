@@ -45,6 +45,7 @@ class VideoFramesDataset(Dataset):
         resize_resolution=None,
         subsample_every_n_frames=1,
         group_mode="folder",
+        clip_name_prefix=None,
         bg_color=(1., 1., 1.),
         normalize_cond_img=True,
         world_size=None, rank=None,
@@ -62,12 +63,14 @@ class VideoFramesDataset(Dataset):
             use_grayscale (bool): Whether to convert images to grayscale.
             bg_color (tuple): Background color for compositing.
             normalize_cond_img (bool): Whether to normalize image pixel values to [-1, 1].
+            clip_name_prefix (str | None): Optional prefix to prepend to clip_name for output paths.
         """
         self.root_dir = root_dir
         self.sample_n_frames = sample_n_frames
         self.overlap_n_frames = overlap_n_frames
         self.chunk_mode = chunk_mode
         self.group_mode = group_mode
+        self.clip_name_prefix = clip_name_prefix
 
         self.resolution = (resolution, resolution) if isinstance(resolution, int) else list(resolution)
         self.resize_resolution = resize_resolution if resize_resolution else self.resolution
@@ -92,10 +95,12 @@ class VideoFramesDataset(Dataset):
         # Step 3: Split each video group into chunks of length inference_n_frames.
         self.chunks = []
         self.chunk_index_list = []
+        self._num_chunks_per_video = []
         for video_relative_paths in self.video_groups:
             video_chunks = split_list_with_overlap(
                 video_relative_paths, self.sample_n_frames, self.overlap_n_frames, chunk_mode=self.chunk_mode
             )
+            self._num_chunks_per_video.append(len(video_chunks))
             self.chunks.extend(video_chunks)
             self.chunk_index_list.extend(list(range(len(video_chunks))))
 
@@ -115,6 +120,9 @@ class VideoFramesDataset(Dataset):
             start_ratio = float(rank) / float(world_size)
             end_ratio = float(rank + 1) / float(world_size)
             self.chunks = sample_list[int(start_ratio * len(sample_list)):int(end_ratio * len(sample_list))]
+    
+    def batch_num_chunks_per_video(self, i):
+        return self._num_chunks_per_video[i]
 
     def __len__(self):
         return len(self.chunks)
@@ -158,8 +166,14 @@ class VideoFramesDataset(Dataset):
         # formatting output samples
         fps = 24
         t5_embed_dummy = self._prepare_dummy_data_i4()  # "t5_text_embeddings", "t5_text_mask"
+        clip_name = base_plus_ext(chunk_relative_paths[0], mode=self.group_mode)[0]
+        if self.clip_name_prefix:
+            if clip_name:
+                clip_name = os.path.join(self.clip_name_prefix, clip_name)
+            else:
+                clip_name = self.clip_name_prefix
         out_example = {
-            "clip_name": base_plus_ext(chunk_relative_paths[0], mode=self.group_mode)[0],
+            "clip_name": clip_name,
             "chunk_index": f"{self.chunk_index_list[idx]:04d}",
             "is_preprocessed": True,
             "num_frames": torch.tensor(self.sample_n_frames, dtype=torch.float),

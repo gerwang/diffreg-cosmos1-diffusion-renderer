@@ -140,20 +140,40 @@ class DiffusionRendererModel(DiffusionT2WModel):
         self.scheduler.set_timesteps(num_steps)
 
         xt = torch.randn(size=(n_sample,) + tuple(state_shape)) * self.scheduler.init_noise_sigma
+        latent_overlap_n_frames = 3
+        for i in range(1, xt.shape[0]):
+            xt[i, :, 1:latent_overlap_n_frames] = xt[i - 1, :, -latent_overlap_n_frames + 1:]
         to_cp = self.net.is_context_parallel_enabled
         if to_cp:
             xt = split_inputs_cp(x=xt, seq_dim=2, cp_group=self.net.cp_group)
+        
+        def slice_condition(cond, index):
+            ret_cond = cond
+            for k, v in ret_cond.items():
+                if isinstance(v, torch.Tensor) and v.shape[0] == xt.shape[0]:
+                    ret_cond[k] = v[index:index+1]
+            return ret_cond
 
         for t in self.scheduler.timesteps:
             xt = xt.to(**self.tensor_kwargs)
             xt_scaled = self.scheduler.scale_model_input(xt, timestep=t)
             # Predict the noise residual
             t = t.to(**self.tensor_kwargs)
-            net_output_cond = self.net(x=xt_scaled, timesteps=t, **condition.to_dict())
-            net_output = net_output_cond
+            net_output = torch.empty_like(xt)
+            for i in range(xt.shape[0]):
+                net_output_cond = self.net(
+                    x=xt_scaled[i:i+1], timesteps=t, **slice_condition(condition.to_dict(), i))
+                net_output[i:i+1] = net_output_cond
             if guidance > 0:
-                net_output_uncond = self.net(x=xt_scaled, timesteps=t, **uncondition.to_dict())
-                net_output = net_output_cond + guidance * (net_output_cond - net_output_uncond)
+                for i in range(xt.shape[0]):
+                    net_output_uncond = self.net(
+                        x=xt_scaled[i:i+1], timesteps=t, **slice_condition(uncondition.to_dict(), i))
+                    net_output[i:i+1] = net_output[i:i+1] + \
+                        guidance * (net_output[i:i+1] - net_output_uncond)
+            for i in range(1, xt.shape[0]):
+                average_net_output = (net_output[i, :, 1:latent_overlap_n_frames] + net_output[i - 1, :, -latent_overlap_n_frames + 1:]) / 2
+                net_output[i, :, 1:latent_overlap_n_frames] = average_net_output
+                net_output[i - 1, :, -latent_overlap_n_frames + 1:] = average_net_output
             # Compute the previous noisy sample x_t -> x_t-1
             xt = self.scheduler.step(net_output, t, xt).prev_sample
         samples = xt

@@ -37,14 +37,18 @@ The below commands creates the `cosmos-predict1` conda environment and installs 
 # Create the cosmos-predict1 conda environment.
 conda env create --file cosmos-predict1.yaml
 # Activate the cosmos-predict1 conda environment.
-conda activate cosmos-predict1
+conda activate cosmos-predict1.1
 # Install the dependencies.
+pip install torch==2.7.1 torchvision==0.22.1 --index-url https://download.pytorch.org/whl/cu128
 pip install -r requirements.txt
 # Patch Transformer engine linking issues in conda environments.
-ln -sf $CONDA_PREFIX/lib/python3.10/site-packages/nvidia/*/include/* $CONDA_PREFIX/include/
-ln -sf $CONDA_PREFIX/lib/python3.10/site-packages/nvidia/*/include/* $CONDA_PREFIX/include/python3.10
 # Install Transformer engine.
-pip install transformer-engine[pytorch]==1.12.0
+cd ..
+git clone --branch v1.12 --recursive https://github.com/NVIDIA/TransformerEngine.git
+cd TransformerEngine
+export NVTE_CUDA_ARCHS=120
+export NVTE_FRAMEWORK=pytorch
+pip install --no-build-isolation .
 ```
 
 If the [dependency](https://github.com/NVlabs/nvdiffrast/blob/main/docker/Dockerfile) is well taken care of, install `nvdiffrast` with:
@@ -148,7 +152,7 @@ Before running the inverse renderer on videos, you need to extract individual fr
 
 The following command will process all videos in the `asset/examples/video_examples/` directory, extracting frames and saving them into the `asset/examples/video_frames_examples/` folder:
 ```bash
-python scripts/dataproc_extract_frames_from_video.py --input_folder asset/examples/video_examples/ --output_folder asset/examples/video_frames_examples/ 
+python scripts/dataproc_extract_frames_from_video.py --input_folder asset/examples/video_examples/ --output_folder asset/examples/video_frames_examples/ \
 --frame_rate 24 --resize 1280x704 --max_frames=57
 ```
 
